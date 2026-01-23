@@ -5,6 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Globe2, Landmark, Plane, Send } from 'lucide-react'
 import { HeroVideoDialog } from '@/components/ui/hero-video-dialog'
 import thumbnail from '@/public/thumbnail.jpg'
+import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+
+
 const suggestions = [
   {
     title: 'Create a New Trip',
@@ -25,6 +29,16 @@ const suggestions = [
 ]
 
 function Hero () {
+
+  const {user} = useUser();
+  const router = useRouter();
+  const onSend = () =>{
+    if(!user){
+        router.push('/sign-in')
+        return;
+    }
+  }
+
   return (
     <div className='mt-26 flex w-full justify-center'>
       {/* {Content} */}
@@ -47,7 +61,7 @@ function Hero () {
               placeholder='E.g: Create a trip from Paris to Newyork'
             />
 
-            <Button size={'icon'} className='absolute bottom-6 right-6 '>
+            <Button onClick={()=> onSend()} size={'icon'} className='absolute bottom-6 right-6 cursor-pointer' >
               <Send className='h-4 w-4' />
             </Button>
           </div>
@@ -78,10 +92,7 @@ function Hero () {
         />
 
         {/* Content end */}
-
-        {/* Crousel List */}
-
-       
+              
       </div>
 
     </div>

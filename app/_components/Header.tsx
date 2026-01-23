@@ -1,9 +1,9 @@
-"use client";
+'use client'
 
-import React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { SignInButton } from '@clerk/nextjs'
 
 const menuOptions = [
   {
@@ -42,9 +42,11 @@ function Header () {
         ))}
       </div>
       {/* Get Started Button */}
-      <Button>
-        <h2>Get Started</h2>
-      </Button>
+      <SignInButton mode='modal'>
+        <Button className='cursor-pointer'>
+          <h2>Get Started</h2>
+        </Button>
+      </SignInButton>
     </div>
   )
 }
