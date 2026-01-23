@@ -40,4 +40,7 @@ command: npx shadcn@latest init
 when you create a folder with the name:
 _components: it is not consider as a route.
 
-
+// Links for the components:
+https://ui.shadcn.com/
+https://ui.aceternity.com/
+https://magicui.design/
