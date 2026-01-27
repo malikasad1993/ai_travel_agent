@@ -1,15 +1,47 @@
-import React from 'react'
-import Header from './_components/Header'
+'use client'
 
+import React, { useContext, useEffect, useState } from 'react'
+import Header from './_components/Header'
+import { useMutation } from 'convex/react'
+import { api } from '@/convex/_generated/api'
+import { useUser } from '@clerk/nextjs'
+import { UserDetailContext } from '@/context/UserDetailContext'
 
 // This function provides a components inside the global layout to render:
-function provider ({ children }: 
-    Readonly<{ children: React.ReactNode }>) {
+function provider ({ children }: Readonly<{ children: React.ReactNode }>) {
   //Starts after this:
-  return <div>
-    <Header/>
-    {children}
-  </div>
+  const CreateUser = useMutation(api.user.CreateNewUser)
+
+  const [userDetail, setUserDetail] = useState<any>()
+  const { user } = useUser()
+
+  useEffect(() => {
+    user && CreateNewUser()
+  }, [user])
+  const CreateNewUser = async () => {
+    if (user) {
+      // Save new user if not exist:
+      const result = await CreateUser({
+        email: user?.primaryEmailAddress?.emailAddress,
+        imageUrl: user?.imageUrl,
+        name: user?.fullName ?? ''
+      })
+      setUserDetail(result)
+    }
+  }
+
+  return (
+    <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
+      <div>
+        <Header />
+        {children}
+      </div>
+    </UserDetailContext.Provider>
+  )
 }
 
 export default provider
+
+export const useUserDetail = () => {
+  return useContext(UserDetailContext);
+}

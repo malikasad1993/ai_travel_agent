@@ -9,7 +9,7 @@ import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 
 
-const suggestions = [
+export const suggestions = [
   {
     title: 'Create a New Trip',
     icon: <Globe2 className='text-blue-400 h-5 w-5' />
@@ -37,6 +37,8 @@ function Hero () {
         router.push('/sign-in')
         return;
     }
+    //Navigate to create trip planner webpage
+    router.push('/create-new-trip');
   }
 
   return (

@@ -44,3 +44,23 @@ _components: it is not consider as a route.
 https://ui.shadcn.com/
 https://ui.aceternity.com/
 https://magicui.design/
+
+// Convex Database:
+
+It is used to store UserTable and Trip Tables.
+
+// Arcjet: 
+
+1. For Rate limiting:
+    Free user can create 1 trips per day. 
+    Limited Features.
+    Reset limit everyday.
+2. Security:
+    It makes it secure to have subscription model so that Each user can have.
+
+
+// AI Model:
+GPT-4.1 Mini.
+
+// AXIOS:
+FOR API CALLS:

@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { SignInButton } from '@clerk/nextjs'
+import { SignInButton, useUser } from '@clerk/nextjs'
 
 const menuOptions = [
   {
@@ -21,6 +21,8 @@ const menuOptions = [
 ]
 
 function Header () {
+  const { user } = useUser()
+
   return (
     <div className='flex justify-between items-center'>
       {/* LOGO */}
@@ -42,11 +44,15 @@ function Header () {
         ))}
       </div>
       {/* Get Started Button */}
-      <SignInButton mode='modal'>
-        <Button className='cursor-pointer'>
-          <h2>Get Started</h2>
-        </Button>
-      </SignInButton>
+      {!user ? (
+        <SignInButton mode='modal'>
+          <Button className='cursor-pointer'>Get Started</Button>
+        </SignInButton>
+      ) : (
+      <Link href={'/create-new-trip'}>
+        <Button>Create New Trip</Button>
+      </Link>
+      )}
     </div>
   )
 }
