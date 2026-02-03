@@ -9,4 +9,10 @@ export default defineSchema({
         subscription: v.optional(v.string()),
         
     }),
+
+    TripPlanTable: defineTable({
+        tripId: v.string(),
+        tripDetail: v.any(),
+        uid: v.id('UserTable')
+    }),
 });

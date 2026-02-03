@@ -11,6 +11,11 @@ import BudgetUi from './BudgetUi';
 import TripDurationUi from './TripDurationUi';
 import FinalUi from './FinalUi';
 import PreferenceUi from './PreferenceUi';
+import { useMutation } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import { useUserDetail } from '@/app/provider';
+import { v4 as uuidv4 } from 'uuid';
+
 
 type Message = {
   role: 'user' | 'assistant';
@@ -33,9 +38,12 @@ function Chatbox() {
   const [userInput, setUserInput] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [isFinal, setIsFinal] = useState(false);
-
+  const {userDetail, setUserDetail} = useUserDetail();
   // ✅ store final plan here
   const [tripPlan, setTripPlan] = useState<TripInfo>();
+
+  // ✅ store trip plan in tripPlan Table in convex:
+  const SaveTripDetail = useMutation(api.tripPlan.CreateTripDetail);
 
   // ✅ keep latest messages to avoid stale state bugs
   const messagesRef = useRef<Message[]>([]);
@@ -68,6 +76,13 @@ function Chatbox() {
       // ✅ FINAL response: { trip_plan: {...} }
       if (finalFlag && result.data?.trip_plan) {
         setTripPlan(result.data.trip_plan);
+        const _tripId = uuidv4();
+        await SaveTripDetail({
+          tripDetail: result.data.trip_plan,
+          tripId: _tripId,
+          uid: userDetail?._id
+        });
+        console.log('Trip plan saved to convex:', result.data.trip_plan);
 
         // ✅ push assistant message so Final UI actually renders
         setMessages((prev) => [
