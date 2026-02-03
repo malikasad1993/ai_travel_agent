@@ -1,171 +1,228 @@
-'use client';
+'use client'
 
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import axios from 'axios';
-import { Loader, Send } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import EmptyBoxState from './EmptyBoxState';
-import GroupSizeUi from './GroupSizeUi';
-import BudgetUi from './BudgetUi';
-import TripDurationUi from './TripDurationUi';
-import FinalUi from './FinalUi';
-import PreferenceUi from './PreferenceUi';
-import { useMutation } from 'convex/react';
-import { api } from '@/convex/_generated/api';
-import { useUserDetail } from '@/app/provider';
-import { v4 as uuidv4 } from 'uuid';
-
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import axios from 'axios'
+import { Loader, Send } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import EmptyBoxState from './EmptyBoxState'
+import GroupSizeUi from './GroupSizeUi'
+import BudgetUi from './BudgetUi'
+import TripDurationUi from './TripDurationUi'
+import FinalUi from './FinalUi'
+import PreferenceUi from './PreferenceUi'
+import { useMutation } from 'convex/react'
+import { api } from '@/convex/_generated/api'
+import { useUserDetail } from '@/app/provider'
+import { v4 as uuidv4 } from 'uuid'
 
 type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-  ui?: string;
-};
-type TripInfo = {
-  budget: string ,
-  destination: string,
-  duration: string,
-  group_size: string,
-  hotels: any[],
-  itinerary: any[],
-  origin: string,
+  role: 'user' | 'assistant'
+  content: string
+  ui?: string
+}
+
+export type TripInfo = {
+  budget: string
+  destination: string
+  duration: string
+  group_size: string
+  hotels: Hotel[]
+  itinerary: Itinerary[]
+  origin: string
   preference: string
 }
 
-function Chatbox() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [userInput, setUserInput] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [isFinal, setIsFinal] = useState(false);
-  const {userDetail, setUserDetail} = useUserDetail();
+export type Hotel = {
+  hotel_name: string
+  hotel_address: string
+  price_per_night: string
+  hotel_image_url: string
+  geo_coordinates: {
+    latitude: number
+    longitude: number
+  }
+  rating: number
+  description: string
+}
+
+export type Activity = {
+  place_name: string
+  place_details: string
+  place_image_url: string
+  geo_coordinates: {
+    latitude: number
+    longitude: number
+  }
+  place_address: string
+  ticket_pricing: string
+  time_travel_each_location: string
+  best_time_to_visit: string
+}
+export type Itinerary = {
+  day: number
+  day_plan: string
+  best_time_to_visit_day: string
+  activities: Activity[]
+}
+function Chatbox () {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [userInput, setUserInput] = useState<string>('')
+  const [loading, setLoading] = useState(false)
+  const [isFinal, setIsFinal] = useState(false)
+  const { userDetail, setUserDetail } = useUserDetail()
   // ✅ store final plan here
-  const [tripPlan, setTripPlan] = useState<TripInfo>();
+  const [tripPlan, setTripPlan] = useState<TripInfo>()
 
   // ✅ store trip plan in tripPlan Table in convex:
-  const SaveTripDetail = useMutation(api.tripPlan.CreateTripDetail);
+  const SaveTripDetail = useMutation(api.tripPlan.CreateTripDetail)
 
   // ✅ keep latest messages to avoid stale state bugs
-  const messagesRef = useRef<Message[]>([]);
+  const messagesRef = useRef<Message[]>([])
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+    messagesRef.current = messages
+  }, [messages])
 
   // ✅ single source of truth to send any text
   const sendMessage = async (text: string, finalFlag: boolean) => {
-    const trimmed = text?.trim();
-    if (!trimmed) return;
+    const trimmed = text?.trim()
+    if (!trimmed) return
 
-    setLoading(true);
+    setLoading(true)
 
-    const newMessage: Message = { role: 'user', content: trimmed };
+    const newMessage: Message = { role: 'user', content: trimmed }
 
     // optimistic UI update
-    const nextMessages = [...messagesRef.current, newMessage];
-    setMessages(nextMessages);
-    messagesRef.current = nextMessages;
+    const nextMessages = [...messagesRef.current, newMessage]
+    setMessages(nextMessages)
+    messagesRef.current = nextMessages
 
     try {
       const result = await axios.post('/api/aimodel', {
         messages: nextMessages,
         isFinal: finalFlag
-      });
+      })
 
-      console.log('API RESULT:', result.data);
+      console.log('API RESULT:', result.data)
 
       // ✅ FINAL response: { trip_plan: {...} }
       if (finalFlag && result.data?.trip_plan) {
-        setTripPlan(result.data.trip_plan);
-        const _tripId = uuidv4();
+        setTripPlan(result.data.trip_plan)
+        const _tripId = uuidv4()
         await SaveTripDetail({
           tripDetail: result.data.trip_plan,
           tripId: _tripId,
           uid: userDetail?._id
-        });
-        console.log('Trip plan saved to convex:', result.data.trip_plan);
+        })
+        console.log('Trip plan saved to convex:', result.data.trip_plan)
 
         // ✅ push assistant message so Final UI actually renders
-        setMessages((prev) => [
+        setMessages(prev => [
           ...prev,
           {
             role: 'assistant',
             content: '✅ Your trip plan is ready!',
             ui: 'Final'
           }
-        ]);
+        ])
 
-        setLoading(false);
-        return;
+        setLoading(false)
+        return
       }
 
       // ✅ Normal step response: { resp, ui }
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
         {
           role: 'assistant',
           content: result?.data?.resp ?? '',
           ui: result?.data?.ui
         }
-      ]);
+      ])
     } catch (err: any) {
-      console.error(err?.response?.data ?? err);
-      setMessages((prev) => [
+      console.error(err?.response?.data ?? err)
+      setMessages(prev => [
         ...prev,
         {
           role: 'assistant',
           content: 'Sorry — something went wrong. Please try again.'
         }
-      ]);
+      ])
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const onSend = async () => {
-    if (loading) return;
-    const text = userInput;
-    setUserInput('');
-    await sendMessage(text, isFinal);
-  };
+    if (loading) return
+    const text = userInput
+    setUserInput('')
+    await sendMessage(text, isFinal)
+  }
 
   const RenderGenerativeUi = (ui: string) => {
     switch (ui) {
       case 'budget':
-        return <BudgetUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />;
+        return (
+          <BudgetUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />
+        )
       case 'groupSize':
-        return <GroupSizeUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />;
+        return (
+          <GroupSizeUi
+            onSelectedOption={(v: string) => sendMessage(v, isFinal)}
+          />
+        )
       case 'TripDuration':
-        return <TripDurationUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />;
-      case 'Preference': 
-        return <PreferenceUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />; 
+        return (
+          <TripDurationUi
+            onSelectedOption={(v: string) => sendMessage(v, isFinal)}
+          />
+        )
+      case 'Preference':
+        return (
+          <PreferenceUi
+            onSelectedOption={(v: string) => sendMessage(v, isFinal)}
+          />
+        )
       case 'Final':
-        return <FinalUi tripPlan={tripPlan} viewTrip={() => console.log(tripPlan)} 
-        disable = {!tripPlan} 
-        />;
-        
+        return (
+          <FinalUi
+            tripPlan={tripPlan}
+            viewTrip={() => console.log(tripPlan)}
+            disable={!tripPlan}
+          />
+        )
+
       default:
-        return null;
+        return null
     }
-  };
+  }
 
   useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (!lastMsg) return;
+    const lastMsg = messages[messages.length - 1]
+    if (!lastMsg) return
 
     // ✅ when agent says Final, trigger final generation once
-    if (lastMsg.role === 'assistant' && lastMsg.ui === 'Final' && !isFinal && !tripPlan) {
-      setIsFinal(true);
+    if (
+      lastMsg.role === 'assistant' &&
+      lastMsg.ui === 'Final' &&
+      !isFinal &&
+      !tripPlan
+    ) {
+      setIsFinal(true)
 
       // ✅ no setUserInput race; send directly
-      sendMessage('Generate the final trip plan now.', true);
+      sendMessage('Generate the final trip plan now.', true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
+  }, [messages])
 
   return (
     <div className='h-[85vh] flex flex-col'>
       {messages?.length === 0 && (
-        <EmptyBoxState onSelectOption={(v: string) => sendMessage(v, isFinal)} />
+        <EmptyBoxState
+          onSelectOption={(v: string) => sendMessage(v, isFinal)}
+        />
       )}
 
       {/* DisplayMessages Section */}
@@ -202,7 +259,7 @@ function Chatbox() {
           <Textarea
             className='w-full h-28 bg-transparent border-none focus-visible:ring-0 shadow-none resize-none'
             placeholder='Start typing here!'
-            onChange={(event) => setUserInput(event.target.value ?? '')}
+            onChange={event => setUserInput(event.target.value ?? '')}
             value={userInput}
           />
 
@@ -217,7 +274,7 @@ function Chatbox() {
         </div>
       </section>
     </div>
-  );
+  )
 }
 
-export default Chatbox;
+export default Chatbox
