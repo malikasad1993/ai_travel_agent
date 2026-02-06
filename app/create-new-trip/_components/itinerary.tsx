@@ -1,146 +1,68 @@
+'use client'
 import { Timeline } from '@/components/ui/timeline'
-import React from 'react'
-import { Hotel } from './ChatBox'
-import { Clock, ExternalLink, Star, Ticket, Timer, Wallet } from 'lucide-react'
+import HotelCardItem from './HotelCardItem'
+import ActivityCardItem from './ActivityCardItem'
+import { useTripDetail } from '@/app/provider'
+import { useEffect, useState } from 'react'
+import { TripInfo } from './ChatBox'
 import Image from 'next/image'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
 
 function itinerary () {
-  const data = [
-    {
-      title: 'Recommended Hotels',
-      content: (
-        <div className='grid grid-cols-1 md:grid-cols-3 gap-2 items-stretch'>
-          {TripData.hotels.map((hotel: Hotel, index) => (
-            <div key={index} className='h-full'>
-              <Card className='h-full flex flex-col'>
-                <div className='relative w-full h-56'>
-                  <Image
-                    src='/thumbnail.jpg'
-                    alt='hotel image'
-                    fill
-                    className='object-cover'
-                  />
-                </div>
-                <CardHeader>
-                  <CardTitle>
-                    <h2 className='font-semibold text-lg text-primary'>
-                      {hotel?.hotel_name}
-                    </h2>
-                  </CardTitle>
-
-                  <CardDescription>
-                    <h2 className='text-black text-lg'>
-                      Address: {hotel.hotel_address}
-                    </h2>
-                  </CardDescription>
-                </CardHeader>
-
-                {/* MAIN CONTENT – allow it to grow */}
-                <CardContent className='flex-grow'>
-                  <p className='text-gray-600'>{hotel?.description}</p>
-                </CardContent>
-
-                <CardContent>
-                  <p className='text-orange-500 flex gap-2 items-center'>
-                    Ratings: <Star /> {hotel?.rating}
-                  </p>
-                </CardContent>
-
-                {/* FOOTER ALWAYS AT BOTTOM */}
-                <CardFooter className='mt-auto'>
-                  <h2 className='flex gap-2 text-green-400'>
-                    <Wallet /> {hotel?.price_per_night}
-                  </h2>
-                </CardFooter>
-
-                <CardContent>
-                  <Button
-                    variant={'outline'}
-                    className='bg-primary text-white w-full'
-                  >
-                    View
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          ))}
-        </div>
-      )
-    },
-    ...TripData.itinerary.map((dayData, index) => ({
-      title: `Day ${dayData.day}:`,
-      content: (
-        <div>
-          <div>
-            <h2 className='text-lg font-semibold '>
-              Day Plan: {dayData.day_plan}{' '}
-            </h2>
-            <p> Best time to visit: {dayData.best_time_to_visit_day}</p>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4 auto-rows-fr'>
-              {dayData.activities.map((activity, index) => (
-                <div
-                  key={index}
-                  className='h-full flex flex-col rounded-lg border p-3'
-                >
-                  {/* IMAGE */}
-                  <div className='relative w-full h-48 mb-2'>
-                    <Image
-                      src='/thumbnail.jpg'
-                      alt='activity'
-                      fill
-                      className='object-cover rounded'
-                    />
-                  </div>
-
-                  {/* CONTENT */}
-                  <h2 className='font-semibold text-lg'>
-                    {activity.place_name}
-                  </h2>
-
-                  <p className='text-gray-500 line-clamp-2'>
-                    {activity.place_details}
-                  </p>
-
-                  <h2 className='text-blue-500 flex gap-2 items-center line-clamp-1 mt-2'>
-                    <Ticket /> {activity.ticket_pricing}
-                  </h2>
-
-                  <p className='text-orange-400 flex gap-2 items-center mt-2'>
-                    <Clock /> {activity.time_travel_each_location}
-                  </p>
-
-                  <p className='text-gray-600 flex gap-2 items-center mt-2'>
-                    <Timer /> {activity.best_time_to_visit}
-                  </p>
-
-                  {/* BUTTON AT BOTTOM */}
-                  <Button
-                    variant='outline'
-                    className='mt-auto w-full bg-primary text-white'
-                  >
-                    View <ExternalLink/>
-                  </Button>
-                </div>
+  const { tripDetailInfo, setTripDetailInfo } = useTripDetail()
+  const [tripData, setTripData] = useState<TripInfo | null>(null)
+  useEffect(() => {
+    tripDetailInfo && setTripData(tripDetailInfo)
+  }, [tripDetailInfo])
+  const data = tripData
+    ? [
+        {
+          title: 'Recommended Hotels',
+          content: (
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-2 items-stretch'>
+              {tripData?.hotels.map((hotel, index) => (
+                <HotelCardItem hotel={hotel} key={index} />
               ))}
             </div>
-          </div>
-        </div>
-      )
-    }))
-  ]
+          )
+        },
+        ...tripData?.itinerary.map((dayData, index) => ({
+          title: `Day ${dayData.day}:`,
+          content: (
+            <div key={index}>
+              <h2 className='text-lg font-semibold '>
+                Day Plan: {dayData.day_plan}{' '}
+              </h2>
+              <p> Best time to visit: {dayData.best_time_to_visit_day}</p>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4 auto-rows-fr'>
+                {dayData.activities.map((activity, index) => (
+                  <ActivityCardItem activity={activity} key={index} />
+                ))}
+              </div>
+            </div>
+          )
+        }))
+      ]
+    : []
+
   return (
     <div className='relative w-full h-[83vh] overflow-auto '>
-      <Timeline data={data} tripData={TripData} />
+      {tripData ? (
+        <Timeline data={data} tripData={tripData} />
+      ) : (
+        <div>
+          <Image
+            src={'/travel2.jpg'}
+            alt={'image'}
+            width={800}
+            height={800}
+            className='w-full h-full items-center object-cover rounded-3xl'
+          />
+            <h2 className='flex gap-2 items-center absolute bottom-10 text-3xl'>
+                <ArrowLeft/> Build your dream destination plan here!
+            </h2>
+        </div>
+      )}
     </div>
   )
 }

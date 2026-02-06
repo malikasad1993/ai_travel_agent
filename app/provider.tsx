@@ -1,18 +1,22 @@
 'use client'
 
-import React, { useContext, useEffect, useState } from 'react'
+import { ReactNode, useContext, useEffect, useState } from 'react'
 import Header from './_components/Header'
 import { useMutation } from 'convex/react'
 import { api } from '@/convex/_generated/api'
 import { useUser } from '@clerk/nextjs'
 import { UserDetailContext } from '@/context/UserDetailContext'
+import { TripContextType, TripDetailContext } from '@/context/TripDetailContext'
+import { TripInfo } from './create-new-trip/_components/ChatBox'
 
 // This function provides a components inside the global layout to render:
-function provider ({ children }: Readonly<{ children: React.ReactNode }>) {
+function provider ({ children }: Readonly<{ children: ReactNode }>) {
   //Starts after this:
   const CreateUser = useMutation(api.user.CreateNewUser)
-
+  
   const [userDetail, setUserDetail] = useState<any>()
+  const [tripDetailInfo, setTripDetailInfo] = useState<TripInfo | null>(null)
+
   const { user } = useUser()
 
   useEffect(() => {
@@ -22,7 +26,7 @@ function provider ({ children }: Readonly<{ children: React.ReactNode }>) {
     if (user) {
       // Save new user if not exist:
       const result = await CreateUser({
-        email: user?.primaryEmailAddress?.emailAddress,
+        email: user?.primaryEmailAddress?.emailAddress ?? '',
         imageUrl: user?.imageUrl,
         name: user?.fullName ?? ''
       })
@@ -32,10 +36,12 @@ function provider ({ children }: Readonly<{ children: React.ReactNode }>) {
 
   return (
     <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
-      <div>
-        <Header />
-        {children}
-      </div>
+      <TripDetailContext.Provider value={{ tripDetailInfo, setTripDetailInfo }}>
+        <div>
+          <Header />
+          {children}
+        </div>
+      </TripDetailContext.Provider>
     </UserDetailContext.Provider>
   )
 }
@@ -43,5 +49,8 @@ function provider ({ children }: Readonly<{ children: React.ReactNode }>) {
 export default provider
 
 export const useUserDetail = () => {
-  return useContext(UserDetailContext);
+  return useContext(UserDetailContext)
+}
+export const useTripDetail = (): TripContextType => {
+  return useContext(TripDetailContext)!
 }

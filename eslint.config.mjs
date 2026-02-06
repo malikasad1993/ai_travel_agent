@@ -13,6 +13,9 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    "@typescript-eslint/ban-ts-comment": "error"
+  }
 ]);
 
 export default eslintConfig;

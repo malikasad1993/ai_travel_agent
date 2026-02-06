@@ -13,7 +13,7 @@ import FinalUi from './FinalUi'
 import PreferenceUi from './PreferenceUi'
 import { useMutation } from 'convex/react'
 import { api } from '@/convex/_generated/api'
-import { useUserDetail } from '@/app/provider'
+import { useTripDetail, useUserDetail } from '@/app/provider'
 import { v4 as uuidv4 } from 'uuid'
 
 type Message = {
@@ -71,6 +71,8 @@ function Chatbox () {
   const [loading, setLoading] = useState(false)
   const [isFinal, setIsFinal] = useState(false)
   const { userDetail, setUserDetail } = useUserDetail()
+  const { tripDetailInfo, setTripDetailInfo } = useTripDetail()
+
   // ✅ store final plan here
   const [tripPlan, setTripPlan] = useState<TripInfo>()
 
@@ -107,7 +109,9 @@ function Chatbox () {
 
       // ✅ FINAL response: { trip_plan: {...} }
       if (finalFlag && result.data?.trip_plan) {
+        
         setTripPlan(result.data.trip_plan)
+        setTripDetailInfo(result?.data?.trip_plan)
         const _tripId = uuidv4()
         await SaveTripDetail({
           tripDetail: result.data.trip_plan,

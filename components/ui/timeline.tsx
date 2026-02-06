@@ -5,13 +5,13 @@ import {
   useTransform,
   motion
 } from 'motion/react'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { ReactNode, useEffect, useRef, useState } from 'react'
 import { TripInfo } from '../../app/create-new-trip/_components/ChatBox'
 import { Calendar, Users2, Wallet, Wallet2 } from 'lucide-react'
 
 interface TimelineEntry {
   title: string
-  content: React.ReactNode
+  content: ReactNode
 }
 
 export const Timeline = ({
