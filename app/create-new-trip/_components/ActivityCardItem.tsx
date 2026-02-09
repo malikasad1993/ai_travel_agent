@@ -14,15 +14,32 @@ function ActivityCardItem ({
   activity: Activity
   key: number
 }) {
+  
   const [photoUrl, setPhotoUrl] = useState<string>()
 
   const GetGooglePlaceDetail = async () => {
+    const placeName = activity?.place_name + ":" + activity?.place_address
+    const cacheKey = `photo_${placeName}`
+
+    // Check localStorage for cached photo URL
+    const cachedPhoto = localStorage.getItem(cacheKey)
+    if (cachedPhoto) {
+      setPhotoUrl(cachedPhoto)
+      return
+    }
+
+    // If not cached, fetch from API
     const result = await axios.post('/api/google-place-detail', {
-      placeName: activity?.place_name + ":" + activity?.place_address
+      placeName: placeName
     })
 
     console.log(result?.data)
     setPhotoUrl(result?.data)
+
+    // Cache the result in localStorage
+    if (result?.data) {
+      localStorage.setItem(cacheKey, result.data)
+    }
   }
 
   useEffect(() => {

@@ -27,8 +27,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 3. Typescript -- Front-end
 4. Arcjet -- Rate limiting & Security
 5. Convex -- Backend Database
-
-
+6. Mapbox -- For 3d Global maps
 # UI Components:
 
 For the UI Components, we are using Shadcn to develop UI components easily without time taking ui development.
@@ -36,9 +35,12 @@ for link: ui.shadcn.com
 command: npx shadcn@latest init
 
 
+
+
 //Notes:
 when you create a folder with the name:
 _components: it is not consider as a route.
+[id]: you can send id through route to make it dynamic
 
 // Links for the components:
 https://ui.shadcn.com/
