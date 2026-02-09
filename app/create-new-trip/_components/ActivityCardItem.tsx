@@ -1,99 +1,113 @@
-'use client'
-import React, { useEffect, useState } from 'react'
-import { Activity, Itinerary } from './ChatBox'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Clock, ExternalLink, Ticket, Timer } from 'lucide-react'
-import Image from 'next/image'
-import axios from 'axios'
+"use client";
 
-function ActivityCardItem ({
-  activity,
-  key
-}: {
-  activity: Activity
-  key: number
-}) {
-  
-  const [photoUrl, setPhotoUrl] = useState<string>()
+import React, { useEffect, useState } from "react";
+import { Activity } from "./ChatBox";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Clock, ExternalLink, Ticket, Timer } from "lucide-react";
+import Image from "next/image";
+import axios from "axios";
+
+function ActivityCardItem({ activity }: { activity: Activity }) {
+  const [photoUrl, setPhotoUrl] = useState<string>("");
 
   const GetGooglePlaceDetail = async () => {
-    const placeName = activity?.place_name + ":" + activity?.place_address
-    const cacheKey = `photo_${placeName}`
+    const name = activity?.place_name?.trim();
+    const addr = activity?.place_address?.trim();
+    if (!name) return;
 
-    // Check localStorage for cached photo URL
-    const cachedPhoto = localStorage.getItem(cacheKey)
+    // ✅ Keep cache key small + stable
+    const placeKey = `${name}-${addr ?? ""}`.slice(0, 120);
+    const cacheKey = `photo_${placeKey}`;
+
+    const cachedPhoto = localStorage.getItem(cacheKey);
     if (cachedPhoto) {
-      setPhotoUrl(cachedPhoto)
-      return
+      setPhotoUrl(cachedPhoto);
+      return;
     }
 
-    // If not cached, fetch from API
-    const result = await axios.post('/api/google-place-detail', {
-      placeName: placeName
-    })
+    try {
+      const placeName = addr ? `${name}: ${addr}` : name;
 
-    console.log(result?.data)
-    setPhotoUrl(result?.data)
+      const result = await axios.post("/api/google-place-detail", {
+        placeName,
+      });
 
-    // Cache the result in localStorage
-    if (result?.data) {
-      localStorage.setItem(cacheKey, result.data)
+      const url = result?.data;
+      if (typeof url === "string" && url.length > 0) {
+        setPhotoUrl(url);
+        localStorage.setItem(cacheKey, url);
+      }
+    } catch (e) {
+      console.error(e);
     }
-  }
+  };
 
   useEffect(() => {
-    activity && GetGooglePlaceDetail()
-  }, [activity])
+    if (activity?.place_name) GetGooglePlaceDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity?.place_name, activity?.place_address]);
 
   return (
-    <div>
-      <div key={key} className='h-full flex flex-col rounded-lg border p-3'>
+    <div className="h-full">
+      <div className="h-full flex flex-col rounded-2xl border overflow-hidden bg-background">
         {/* IMAGE */}
-        <div className='relative w-full h-48 mb-2'>
+        <div className="relative w-full h-40 sm:h-48 md:h-52">
           <Image
-            src={photoUrl ? photoUrl : '/thumbnail.jpg'}
-            alt='activity'
+            src={photoUrl ? photoUrl : "/thumbnail.jpg"}
+            alt={activity?.place_name || "activity"}
             fill
-            className='object-cover rounded'
+            className="object-cover"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 50vw"
           />
         </div>
 
-        {/* CONTENT */}
-        <h2 className='font-semibold text-lg'>{activity.place_name}</h2>
+        {/* BODY */}
+        <div className="p-4 flex flex-col flex-1">
+          <h2 className="font-semibold text-base sm:text-lg leading-snug break-words">
+            {activity.place_name}
+          </h2>
 
-        <p className='text-gray-500 line-clamp-2'>{activity.place_details}</p>
+          <p className="mt-1 text-sm sm:text-base text-muted-foreground leading-relaxed line-clamp-2 break-words">
+            {activity.place_details}
+          </p>
 
-        <h2 className='text-blue-500 flex gap-2 items-center line-clamp-1 mt-2'>
-          <Ticket /> {activity.ticket_pricing}
-        </h2>
+          <div className="mt-3 space-y-2">
+            <div className="text-sm sm:text-base text-blue-500 flex gap-2 items-center line-clamp-1">
+              <Ticket className="h-4 w-4" />
+              <span className="font-medium">{activity.ticket_pricing}</span>
+            </div>
 
-        <p className='text-orange-400 flex gap-2 items-center mt-2'>
-          <Clock /> {activity.time_travel_each_location}
-        </p>
+            <div className="text-sm sm:text-base text-orange-500 flex gap-2 items-center">
+              <Clock className="h-4 w-4" />
+              <span>{activity.time_travel_each_location}</span>
+            </div>
 
-        <p className='text-gray-600 flex gap-2 items-center mt-2'>
-          <Timer /> {activity.best_time_to_visit}
-        </p>
+            <div className="text-sm sm:text-base text-foreground/70 flex gap-2 items-center">
+              <Timer className="h-4 w-4" />
+              <span>{activity.best_time_to_visit}</span>
+            </div>
+          </div>
 
-        {/* BUTTON AT BOTTOM */}
-        <Link
-          href={
-            'https://www.google.com/maps/search/?api=1&query=' +
-            activity?.place_name
-          }
-          target='_blank'
-        >
-          <Button
-            variant='outline'
-            className='mt-auto w-full bg-primary text-white'
-          >
-            View <ExternalLink />
-          </Button>
-        </Link>
+          {/* BUTTON AT BOTTOM */}
+          <div className="mt-4 pt-2 mt-auto">
+            <Link
+              href={
+                "https://www.google.com/maps/search/?api=1&query=" +
+                encodeURIComponent(activity?.place_name || "")
+              }
+              target="_blank"
+              className="w-full"
+            >
+              <Button className="w-full">
+                View <ExternalLink className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default ActivityCardItem
+export default ActivityCardItem;
