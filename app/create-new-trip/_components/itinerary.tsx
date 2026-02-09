@@ -56,7 +56,7 @@ function itinerary () {
             alt={'image'}
             width={800}
             height={800}
-            className='w-full h-full items-center object-cover rounded-3xl'
+            className='w-full h-full items-center object-cover border rounded-3xl'
           />
             <h2 className='flex gap-2 items-center absolute bottom-10 text-3xl'>
                 <ArrowLeft/> Build your dream destination plan here!

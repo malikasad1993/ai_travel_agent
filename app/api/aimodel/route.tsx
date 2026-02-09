@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { aj } from '../arcjet/route'
+import { auth, currentUser } from '@clerk/nextjs/server'
 
 export const openai = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY
 })
 
-const PROMPT = `You are an Al Trip Planner Agent. Your goal is to help the user plan a trip by asking one relevant trip-related question at a time.
+const PROMPT =
+  `You are an Al Trip Planner Agent. Your goal is to help the user plan a trip by asking one relevant trip-related question at a time.
 Only ask questions about the following details in order, and wait for the user's answer before asking the next:
 1. Starting location (source)
 2. Destination city or country
@@ -23,7 +26,7 @@ Once all required information is collected, generate and return a strict JSON re
 {
 resp:'Text Resp'
 ui:'budget/groupSize/TripDuration/Preference/Final)'
-}`.trim();
+}`.trim()
 
 const FINAL_PROMPT = `
 You are an AI travel planner. Return STRICT JSON ONLY (no markdown, no extra text).
@@ -142,11 +145,29 @@ IMPORTANT:
 - Each day must include exactly 4 activities.
 - The "hotels" array must include exactly 3 hotels.
 - Output JSON only.
-`.trim();
-
+`.trim()
 
 export async function POST (req: NextRequest) {
   const { messages, isFinal } = await req.json()
+
+
+  //Arcjet Limiter:
+  const user = await currentUser()
+  const {has} = await auth();
+  const hasPremiumAccess = has({plan: 'monthly'})
+  console.log("Has Premium Access? :", hasPremiumAccess)
+  const decision = await aj.protect(req, { userId:user?.primaryEmailAddress?.emailAddress ?? '', requested: isFinal ? 5 : 0 }) // Deduct 5 tokens from the bucket
+  console.log('Arcjet decision: ', decision)
+
+  //@ts-ignore
+  if(decision?.reason?.remaining == 0 && !hasPremiumAccess) {
+    return NextResponse.json({
+      resp: 'No free credit remaining',
+      ui: 'limit'
+    })
+  }
+
+  
 
   try {
     const completion = await openai.chat.completions.create({
@@ -171,8 +192,7 @@ export async function POST (req: NextRequest) {
     const message = completion.choices[0].message
 
     return NextResponse.json(JSON.parse(message.content ?? ''))
-  } 
-  catch (e: any) {
+  } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? 'Unknown error' },
       { status: 500 }

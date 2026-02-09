@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { SignInButton, useUser } from '@clerk/nextjs'
+import { SignInButton, UserButton, useUser } from '@clerk/nextjs'
 
 const menuOptions = [
   {
@@ -44,15 +44,18 @@ function Header () {
         ))}
       </div>
       {/* Get Started Button */}
-      {!user ? (
-        <SignInButton mode='modal'>
-          <Button className='cursor-pointer'>Get Started</Button>
-        </SignInButton>
-      ) : (
-      <Link href={'/create-new-trip'}>
-        <Button>Create New Trip</Button>
-      </Link>
-      )}
+      <div className='flex gap-5 items-center'>
+        {!user ? (
+          <SignInButton mode='modal'>
+            <Button className='cursor-pointer'>Get Started</Button>
+          </SignInButton>
+        ) : (
+          <Link href={'/create-new-trip'}>
+            <Button>Create New Trip</Button>
+          </Link>
+        )}
+        <UserButton/>
+      </div>
     </div>
   )
 }

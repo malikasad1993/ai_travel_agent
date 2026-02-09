@@ -21,7 +21,7 @@ export function PopularCityList() {
 const DummyContent = () => {
   return (
     <>
-      {[...new Array(3).fill(1)].map((_, index) => {
+      {[...new Array(3).fill(true)].map((_, index) => {
         return (
           <div
             key={"dummy-content" + index}
