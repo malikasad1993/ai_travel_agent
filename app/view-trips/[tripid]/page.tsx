@@ -6,15 +6,14 @@ import { useConvex } from 'convex/react'
 import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Itinerary from '@/app/create-new-trip/_components/itinerary'
+import GlobalMap from '@/app/create-new-trip/_components/GlobalMap'
 
 function ViewTrip () {
-
   const { tripid } = useParams()
   const { userDetail, setUserDetail } = useUserDetail()
   const convex = useConvex()
   const [tripData, setTripData] = useState<Trip>()
   const { tripDetailInfo, setTripDetailInfo } = useTripDetail()
-
 
   const GetTrip = async () => {
     const result = await convex.query(api.tripPlan.GetTripById, {
@@ -31,9 +30,14 @@ function ViewTrip () {
   }, [userDetail])
 
   return (
-  <div>
-    <Itinerary />
-  </div>
+    <div className='grid grid-cols-5'>
+      <div className='col-span-3 '>
+        <Itinerary />
+      </div>
+      <div className='col-span-2'>
+        <GlobalMap />
+      </div>
+    </div>
   )
 }
 
