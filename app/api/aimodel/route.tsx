@@ -1,32 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
-import { aj } from '../arcjet/route'
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { NextRequest, NextResponse } from "next/server";
+import OpenAI from "openai";
+import { aj } from "../arcjet/route";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 export const openai = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY
-})
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
 
-const PROMPT =
-  `You are an Al Trip Planner Agent. Your goal is to help the user plan a trip by asking one relevant trip-related question at a time.
-Only ask questions about the following details in order, and wait for the user's answer before asking the next:
+const PROMPT = `
+You are an AI Trip Planner Agent. Your goal is to help the user plan a trip by asking one relevant trip-related question at a time.
+Ask questions in this exact order, one at a time, waiting for the user before the next:
 1. Starting location (source)
 2. Destination city or country
 3. Group size (Solo, Couple, Family, Friends)
 4. Budget (Low, Medium, High)
 5. Trip duration (number of days)
-6. Preferences (e.g., adventure, sightseeing, cultural, food, nightlife, relaxation, include everything)
-7. Special requirements or preferences (if any)
-Do not ask multiple questions at once, and never ask irrelevant questions
-If any answer is missing or unclear, politely ask the user to clarify before proceeding.
-Always maintain a conversational, interactive style while asking questions.
-Along wth response also send which ui component to display for generative UI for example 'budget/groupSize/TripDuration/Preference/Final) , where Final means Al generating complete final output.
-Once all required information is collected, generate and return a strict JSON response only (no explanations or extra text) with following JSON schema:
+6. Preferences (adventure, sightseeing, cultural, food, nightlife, relaxation, include everything)
+7. Special requirements (if any)
+
+Do not ask multiple questions at once.
+Along with the response also send which UI component to display for generative UI:
+'budget' | 'groupSize' | 'TripDuration' | 'Preference' | 'Final'
+
+Return STRICT JSON ONLY:
 {
-resp:'Text Resp'
-ui:'budget/groupSize/TripDuration/Preference/Final)'
-}`.trim()
+  "resp": "Text response",
+  "ui": "budget/groupSize/TripDuration/Preference/Final"
+}
+`.trim();
 
 const FINAL_PROMPT = `
 You are an AI travel planner. Return STRICT JSON ONLY (no markdown, no extra text).
@@ -38,17 +40,9 @@ HARD LIMITS (must follow):
 - Keep every string short: MAX 160 characters per string field.
 - Do NOT include unescaped double quotes (") inside any string values.
 - Do NOT use newline characters inside string values.
-- If you are unsure of an exact value (e.g., ticket price), use "Varies" (as a string).
+- If you are unsure of an exact value (e.g., ticket price), use "Varies".
 - Geo coordinates MUST be numbers (latitude/longitude), never strings.
 - Return valid JSON that can be parsed by JSON.parse().
-
-Generate a detailed travel plan using the user's provided details from the conversation:
-- origin
-- destination
-- group_size
-- budget
-- duration (days)
-- preference
 
 Output JSON schema (follow exactly, include all keys):
 {
@@ -58,7 +52,7 @@ Output JSON schema (follow exactly, include all keys):
     "origin": "string",
     "budget": "string",
     "group_size": "string",
-    "preference": "string", 
+    "preference": "string",
     "hotels": [
       {
         "hotel_name": "string",
@@ -141,61 +135,106 @@ Output JSON schema (follow exactly, include all keys):
 }
 
 IMPORTANT:
-- The "itinerary" array must include one object per day (day 1..N).
+- "itinerary" must include one object per day (day 1..N).
 - Each day must include exactly 4 activities.
-- The "hotels" array must include exactly 3 hotels.
+- "hotels" must include exactly 3 hotels.
 - Output JSON only.
-`.trim()
+`.trim();
 
-export async function POST (req: NextRequest) {
-  const { messages, isFinal } = await req.json()
-
-
-  //Arcjet Limiter:
-  const user = await currentUser()
-  const {has} = await auth();
-  const hasPremiumAccess = has({plan: 'monthly'})
-  console.log("Has Premium Access? :", hasPremiumAccess)
-  const decision = await aj.protect(req, { userId:user?.primaryEmailAddress?.emailAddress ?? '', requested: isFinal ? 5 : 0 }) // Deduct 5 tokens from the bucket
-  console.log('Arcjet decision: ', decision)
-
-  //@ts-ignore
-  if(decision?.reason?.remaining == 0 && !hasPremiumAccess) {
-    return NextResponse.json({
-      resp: 'No free credit remaining',
-      ui: 'limit'
-    })
+function safeJsonParse<T = any>(text: string): { ok: true; data: T } | { ok: false; error: string } {
+  try {
+    const data = JSON.parse(text);
+    return { ok: true, data };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Invalid JSON" };
   }
+}
 
-  
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const messages = body?.messages ?? [];
+  const isFinal = Boolean(body?.isFinal);
+
+  // ✅ Clerk
+  const user = await currentUser();
+  const { has } = await auth();
+  const hasPremiumAccess = has({ plan: "monthly" });
+
+  const userId = user?.primaryEmailAddress?.emailAddress ?? "anonymous";
+
+  // ✅ Arcjet: charge 1 token per step, 5 for final (adjust as you like)
+  const tokensToCharge = isFinal ? 5 : 1;
+
+  const decision = await aj.protect(req, { userId, requested: tokensToCharge });
+  console.log("Has Premium Access?:", hasPremiumAccess);
+  console.log("Arcjet conclusion:", decision.conclusion);
+
+  // ✅ If denied and not premium -> return 429 cleanly
+  if (decision.isDenied() && !hasPremiumAccess) {
+    return NextResponse.json(
+      {
+        resp: "You’ve hit the free limit for today. Try again tomorrow or upgrade to Premium.",
+        ui: "limit",
+        error: "RATE_LIMITED",
+      },
+      { status: 429 }
+    );
+  }
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'openai/gpt-4.1-mini',
-      response_format: { type: 'json_object' },
+      model: "openai/gpt-4.1-mini",
+      response_format: { type: "json_object" },
       messages: [
-        {
-          role: 'system',
-          content: isFinal ? FINAL_PROMPT : PROMPT
-        },
-        ...messages
+        { role: "system", content: isFinal ? FINAL_PROMPT : PROMPT },
+        ...messages,
       ],
-      temperature: 0.3, // lower = more controlled & structured
-      max_tokens: isFinal ? 6000 : 600,
-
-      // optional but recommended
+      temperature: 0.3,
+      max_tokens: isFinal ? 2000 : 400,
       top_p: 1,
       presence_penalty: 0,
-      frequency_penalty: 0
-    })
-    console.log(completion.choices[0].message)
-    const message = completion.choices[0].message
+      frequency_penalty: 0,
+    });
 
-    return NextResponse.json(JSON.parse(message.content ?? ''))
+    const msg = completion.choices?.[0]?.message;
+    const content = msg?.content ?? "";
+
+    if (!content) {
+      return NextResponse.json(
+        { error: "EMPTY_MODEL_RESPONSE", resp: "Model returned empty response.", ui: "error" },
+        { status: 502 }
+      );
+    }
+
+    const parsed = safeJsonParse(content);
+
+    if (!parsed.ok) {
+      console.error("Model JSON parse failed:", parsed.error, "content:", content.slice(0, 300));
+      return NextResponse.json(
+        { error: "INVALID_MODEL_JSON", resp: "Model returned invalid JSON.", ui: "error" },
+        { status: 502 }
+      );
+    }
+
+    // ✅ In final mode we EXPECT trip_plan.
+    // If model returns {resp, ui} incorrectly, convert it into a consistent error.
+    if (isFinal && !parsed.data?.trip_plan) {
+      return NextResponse.json(
+        {
+          error: "FINAL_MISSING_TRIP_PLAN",
+          resp: "Final plan generation failed. Please try again.",
+          ui: "error",
+        },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json(parsed.data);
   } catch (e: any) {
+    console.error("aimodel error:", e?.message ?? e);
     return NextResponse.json(
-      { error: e?.message ?? 'Unknown error' },
+      { error: e?.message ?? "Unknown error" },
       { status: 500 }
-    )
+    );
   }
 }

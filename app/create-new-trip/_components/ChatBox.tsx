@@ -67,6 +67,29 @@ export type Itinerary = {
   activities: Activity[];
 };
 
+function logAnyError(prefix: string, err: unknown) {
+  // ✅ This avoids the dev overlay showing "{}"
+  if (axios.isAxiosError(err)) {
+    console.error(prefix, {
+      message: err.message,
+      status: err.response?.status,
+      data: err.response?.data,
+    });
+    return;
+  }
+
+  if (err instanceof Error) {
+    console.error(prefix, { message: err.message, stack: err.stack });
+    return;
+  }
+
+  try {
+    console.error(prefix, JSON.stringify(err));
+  } catch {
+    console.error(prefix, String(err));
+  }
+}
+
 function Chatbox() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState<string>("");
@@ -74,12 +97,12 @@ function Chatbox() {
   const [isFinal, setIsFinal] = useState(false);
 
   const { userDetail } = useUserDetail();
-  const { tripDetailInfo, setTripDetailInfo } = useTripDetail();
+  const { setTripDetailInfo } = useTripDetail();
 
   // ✅ store final plan here
   const [tripPlan, setTripPlan] = useState<TripInfo>();
 
-  // ✅ store trip plan in tripPlan Table in convex:
+  // ✅ store trip plan in convex:
   const SaveTripDetail = useMutation(api.tripPlan.CreateTripDetail);
 
   // ✅ keep latest messages to avoid stale state bugs
@@ -88,7 +111,21 @@ function Chatbox() {
     messagesRef.current = messages;
   }, [messages]);
 
-  // ✅ auto-scroll to latest message (mobile-friendly)
+  // ✅ keep latest flags to avoid stale closure in useEffect
+  const isFinalRef = useRef(false);
+  useEffect(() => {
+    isFinalRef.current = isFinal;
+  }, [isFinal]);
+
+  const tripPlanRef = useRef<TripInfo | undefined>(undefined);
+  useEffect(() => {
+    tripPlanRef.current = tripPlan;
+  }, [tripPlan]);
+
+  // ✅ prevent duplicate final generation calls
+  const finalRequestInFlightRef = useRef(false);
+
+  // ✅ auto-scroll
   const endRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -97,6 +134,9 @@ function Chatbox() {
   const sendMessage = async (text: string, finalFlag: boolean) => {
     const trimmed = text?.trim();
     if (!trimmed) return;
+
+    // Prevent overlapping requests (helps a LOT in dev mode)
+    if (loading) return;
 
     setLoading(true);
 
@@ -115,17 +155,25 @@ function Chatbox() {
 
       // ✅ FINAL response: { trip_plan: {...} }
       if (finalFlag && result.data?.trip_plan) {
-        setTripPlan(result.data.trip_plan);
-        setTripDetailInfo(result.data.trip_plan);
+        const plan: TripInfo = result.data.trip_plan;
 
-        const _tripId = uuidv4();
-        await SaveTripDetail({
-          tripDetail: result.data.trip_plan,
-          tripId: _tripId,
-          uid: userDetail?._id,
-        });
+        setTripPlan(plan);
+        setTripDetailInfo(plan);
 
-        // ✅ push assistant message so Final UI actually renders
+        // Only save if we have a valid uid
+        const uid = userDetail?._id;
+        if (uid) {
+          const _tripId = uuidv4();
+          await SaveTripDetail({
+            tripDetail: plan,
+            tripId: _tripId,
+            uid,
+          });
+        } else {
+          console.warn("Skipping SaveTripDetail: userDetail._id is not ready yet.");
+        }
+
+        // ✅ show final UI message
         setMessages((prev) => [
           ...prev,
           {
@@ -135,7 +183,6 @@ function Chatbox() {
           },
         ]);
 
-        setLoading(false);
         return;
       }
 
@@ -148,8 +195,8 @@ function Chatbox() {
           ui: result?.data?.ui,
         },
       ]);
-    } catch (err: any) {
-      console.error(err?.response?.data ?? err);
+    } catch (err: unknown) {
+      logAnyError("sendMessage failed:", err);
       setMessages((prev) => [
         ...prev,
         {
@@ -172,21 +219,13 @@ function Chatbox() {
   const RenderGenerativeUi = (ui: string) => {
     switch (ui) {
       case "budget":
-        return (
-          <BudgetUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />
-        );
+        return <BudgetUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />;
       case "groupSize":
-        return (
-          <GroupSizeUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />
-        );
+        return <GroupSizeUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />;
       case "TripDuration":
-        return (
-          <TripDurationUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />
-        );
+        return <TripDurationUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />;
       case "Preference":
-        return (
-          <PreferenceUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />
-        );
+        return <PreferenceUi onSelectedOption={(v: string) => sendMessage(v, isFinal)} />;
       case "Final":
         return (
           <FinalUi
@@ -204,18 +243,24 @@ function Chatbox() {
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg) return;
 
-    // ✅ when agent says Final, trigger final generation once
-    if (
+    // ✅ when agent says Final, trigger final generation ONCE
+    const shouldTriggerFinal =
       lastMsg.role === "assistant" &&
       lastMsg.ui === "Final" &&
-      !isFinal &&
-      !tripPlan
-    ) {
+      !isFinalRef.current &&
+      !tripPlanRef.current &&
+      !finalRequestInFlightRef.current;
+
+    if (shouldTriggerFinal) {
+      finalRequestInFlightRef.current = true;
       setIsFinal(true);
-      sendMessage("Generate the final trip plan now.", true);
+
+      // fire and release the lock when done
+      sendMessage("Generate the final trip plan now.", true).finally(() => {
+        finalRequestInFlightRef.current = false;
+      });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
+  }, [messages]); // ✅ safe because we use refs
 
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
