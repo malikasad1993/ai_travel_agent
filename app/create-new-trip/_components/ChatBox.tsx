@@ -151,12 +151,13 @@ function Chatbox() {
       const result = await axios.post("/api/aimodel", {
         messages: nextMessages,
         isFinal: finalFlag,
+        
       });
-
+      console.log(result);
       // ✅ FINAL response: { trip_plan: {...} }
       if (finalFlag && result.data?.trip_plan) {
         const plan: TripInfo = result.data.trip_plan;
-
+        
         setTripPlan(plan);
         setTripDetailInfo(plan);
 
