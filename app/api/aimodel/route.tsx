@@ -30,7 +30,6 @@ Return STRICT JSON ONLY:
 }
 `.trim();
 
-// ✅ Tightened to reduce JSON breakage + reduce token bloat
 const FINAL_PROMPT = `
 You are an AI travel planner. Return STRICT JSON ONLY (no markdown, no extra text).
 Return VALID JSON that can be parsed by JSON.parse().
@@ -40,7 +39,7 @@ HARD LIMITS (must follow):
 - Hotels: return EXACTLY 3 hotels.
 - Itinerary days: return EXACTLY N day objects where N = duration in days from the conversation (if missing/unclear, default N=3).
 - Activities per day: return EXACTLY 4 activities per day.
-- Keep every string short: MAX 120 characters per string field (shorter is better).
+- Keep every string short: MAX 100 characters per string field.
 - DO NOT include unescaped double quotes (") inside any string values. Avoid quotes inside strings completely.
 - Do NOT use newline characters in string values.
 - If unsure of any value (ticket price, exact travel time, exact URL), use "Varies".
@@ -50,7 +49,8 @@ DURATION FORMAT:
 - Set trip_plan.duration to a numeric string like "3" or "5" (NOT "5 Days").
 
 IMAGE URL RULE:
-- If you do not know a real image URL, set hotel_image_url/place_image_url to "Varies".
+- hotel_image_url MUST be "Varies"
+- place_image_url MUST be "Varies"
 
 Output JSON schema (follow exactly, include all keys):
 {
@@ -96,36 +96,6 @@ Output JSON schema (follow exactly, include all keys):
         "day_plan": "string",
         "best_time_to_visit_day": "string",
         "activities": [
-          {
-            "place_name": "string",
-            "place_details": "string",
-            "place_image_url": "string",
-            "geo_coordinates": { "latitude": 0, "longitude": 0 },
-            "place_address": "string",
-            "ticket_pricing": "string",
-            "time_travel_each_location": "string",
-            "best_time_to_visit": "string"
-          },
-          {
-            "place_name": "string",
-            "place_details": "string",
-            "place_image_url": "string",
-            "geo_coordinates": { "latitude": 0, "longitude": 0 },
-            "place_address": "string",
-            "ticket_pricing": "string",
-            "time_travel_each_location": "string",
-            "best_time_to_visit": "string"
-          },
-          {
-            "place_name": "string",
-            "place_details": "string",
-            "place_image_url": "string",
-            "geo_coordinates": { "latitude": 0, "longitude": 0 },
-            "place_address": "string",
-            "ticket_pricing": "string",
-            "time_travel_each_location": "string",
-            "best_time_to_visit": "string"
-          },
           {
             "place_name": "string",
             "place_details": "string",
@@ -214,42 +184,47 @@ export async function POST(req: NextRequest) {
   // ✅ Clerk
   const user = await currentUser();
   const { has } = await auth();
+
+  // ⚠️ Ensure this matches your Clerk plan key EXACTLY
   const hasPremiumAccess = has({ plan: "monthly" });
 
-  const userId = user?.primaryEmailAddress?.emailAddress ?? "anonymous";
+  // ✅ Use stable user id (email can be missing/empty sometimes)
+  const userId = user?.id ?? "anonymous";
 
-  // ✅ Arcjet: charge 1 token per step, 5 for final (adjust as you like)
-  const tokensToCharge = isFinal ? 5 : 1;
-
-  const decision = await aj.protect(req, { userId, requested: tokensToCharge });
   console.log("Has Premium Access?:", hasPremiumAccess);
-  console.log("Arcjet conclusion:", decision.conclusion);
+  console.log("Clerk userId:", userId);
 
-  // ✅ If denied and not premium -> return 429 cleanly
-  if (decision.isDenied() && !hasPremiumAccess) {
-    return NextResponse.json(
-      {
-        resp: "You’ve hit the free limit for today. Try again tomorrow or upgrade to Premium.",
-        ui: "limit",
-        error: "RATE_LIMITED",
-      },
-      { status: 429 }
-    );
+  // ✅ Arcjet should NOT run for premium users
+  if (!hasPremiumAccess) {
+    const tokensToCharge = isFinal ? 2 : 1; // ✅ do not burn the bucket in one call
+    const decision = await aj.protect(req, { userId, requested: tokensToCharge });
+
+    console.log("Arcjet conclusion:", decision.conclusion);
+
+    if (decision.isDenied()) {
+      return NextResponse.json(
+        {
+          resp: "You’ve hit the free limit for today. Try again tomorrow or upgrade to Premium.",
+          ui: "limit",
+          error: "RATE_LIMITED",
+        },
+        { status: 429 }
+      );
+    }
+  } else {
+    console.log("Premium user -> Arcjet bypassed");
   }
 
-  // ✅ Keep token usage safer (final can still be big)
-  const maxTokens = isFinal ? 1800 : 400;
+  // ✅ Reasonable token sizes (your 60 was causing truncation + JSON failures)
+  const maxTokens = isFinal ? 2000 : 350;
 
   try {
     const completion = await openai.chat.completions.create({
       model: "openai/gpt-4.1-mini",
       response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: isFinal ? FINAL_PROMPT : PROMPT },
-        ...messages,
-      ],
+      messages: [{ role: "system", content: isFinal ? FINAL_PROMPT : PROMPT }, ...messages],
       temperature: isFinal ? 0.15 : 0.3,
-      max_tokens: isFinal ? 6000: 60,
+      max_tokens: maxTokens,
       top_p: 1,
       presence_penalty: 0,
       frequency_penalty: 0,
@@ -259,55 +234,30 @@ export async function POST(req: NextRequest) {
 
     if (!content) {
       return NextResponse.json(
-        {
-          error: "EMPTY_MODEL_RESPONSE",
-          resp: "Model returned empty response.",
-          ui: "error",
-        },
+        { error: "EMPTY_MODEL_RESPONSE", resp: "Model returned empty response.", ui: "error" },
         { status: 502 }
       );
     }
 
-    // ✅ Parse attempt #1
     const parsed = safeJsonParse(content);
 
     if (!parsed.ok) {
-      console.error(
-        "Model JSON parse failed:",
-        parsed.error,
-        "content (start):",
-        content.slice(0, 400)
-      );
+      console.error("Model JSON parse failed:", parsed.error, "content (start):", content.slice(0, 400));
 
-      // ✅ Repair attempt (one retry)
       const repairedText = await repairJsonWithModel(content);
       const repaired = safeJsonParse(repairedText);
 
       if (!repaired.ok) {
-        console.error(
-          "Repair failed:",
-          repaired.error,
-          "repaired (start):",
-          repairedText.slice(0, 400)
-        );
+        console.error("Repair failed:", repaired.error, "repaired (start):", repairedText.slice(0, 400));
         return NextResponse.json(
-          {
-            error: "INVALID_MODEL_JSON",
-            resp: "Model returned invalid JSON (repair failed).",
-            ui: "error",
-          },
+          { error: "INVALID_MODEL_JSON", resp: "Model returned invalid JSON (repair failed).", ui: "error" },
           { status: 502 }
         );
       }
 
-      // ✅ Final mode must include trip_plan
       if (isFinal && !repaired.data?.trip_plan) {
         return NextResponse.json(
-          {
-            error: "FINAL_MISSING_TRIP_PLAN",
-            resp: "Final plan generation failed. Please try again.",
-            ui: "error",
-          },
+          { error: "FINAL_MISSING_TRIP_PLAN", resp: "Final plan generation failed. Please try again.", ui: "error" },
           { status: 502 }
         );
       }
@@ -315,14 +265,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(repaired.data);
     }
 
-    // ✅ Final mode must include trip_plan
     if (isFinal && !parsed.data?.trip_plan) {
       return NextResponse.json(
-        {
-          error: "FINAL_MISSING_TRIP_PLAN",
-          resp: "Final plan generation failed. Please try again.",
-          ui: "error",
-        },
+        { error: "FINAL_MISSING_TRIP_PLAN", resp: "Final plan generation failed. Please try again.", ui: "error" },
         { status: 502 }
       );
     }
@@ -332,7 +277,6 @@ export async function POST(req: NextRequest) {
     const status = extractStatus(e);
     const msg = extractMessage(e);
 
-    // ✅ OpenRouter credit issue -> map to 402
     if (status === 402 || msg.includes("requires more credits")) {
       return NextResponse.json(
         {

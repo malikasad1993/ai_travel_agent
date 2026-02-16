@@ -68,7 +68,6 @@ export type Itinerary = {
 };
 
 function logAnyError(prefix: string, err: unknown) {
-  // ✅ This avoids the dev overlay showing "{}"
   if (axios.isAxiosError(err)) {
     console.error(prefix, {
       message: err.message,
@@ -99,10 +98,7 @@ function Chatbox() {
   const { userDetail } = useUserDetail();
   const { setTripDetailInfo } = useTripDetail();
 
-  // ✅ store final plan here
   const [tripPlan, setTripPlan] = useState<TripInfo>();
-
-  // ✅ store trip plan in convex:
   const SaveTripDetail = useMutation(api.tripPlan.CreateTripDetail);
 
   // ✅ keep latest messages to avoid stale state bugs
@@ -125,24 +121,69 @@ function Chatbox() {
   // ✅ prevent duplicate final generation calls
   const finalRequestInFlightRef = useRef(false);
 
-  // ✅ auto-scroll
+  // ✅ scroll container ref
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ track if user is near bottom (so we don't force-scroll)
+  const shouldAutoScrollRef = useRef(true);
+
+  // ✅ Textarea focus ref
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const isMobile = () =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+
+  const scrollToBottom = (force = false) => {
+    if (!force && !shouldAutoScrollRef.current) return;
+
+    endRef.current?.scrollIntoView({
+      behavior: isMobile() ? "auto" : "smooth", // ✅ avoid mobile jump
+      block: "end",
+    });
+  };
+
+  // ✅ Attach scroll listener once
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const threshold = 140; // a bit more forgiving on mobile
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      shouldAutoScrollRef.current = distanceFromBottom < threshold;
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // ✅ Auto-scroll only when user is near bottom, OR when user sends a message
+  useEffect(() => {
+    if (!messages.length) return;
+    const last = messages[messages.length - 1];
+    const userJustSent = last?.role === "user";
+
+    scrollToBottom(userJustSent);
+  }, [messages]);
+
+  // ✅ When loading bubble appears, scroll only if user is near bottom
+  useEffect(() => {
+    if (loading) scrollToBottom(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const sendMessage = async (text: string, finalFlag: boolean) => {
     const trimmed = text?.trim();
     if (!trimmed) return;
-
-    // Prevent overlapping requests (helps a LOT in dev mode)
     if (loading) return;
 
     setLoading(true);
 
     const newMessage: Message = { role: "user", content: trimmed };
 
-    // optimistic UI update
     const nextMessages = [...messagesRef.current, newMessage];
     setMessages(nextMessages);
     messagesRef.current = nextMessages;
@@ -151,17 +192,15 @@ function Chatbox() {
       const result = await axios.post("/api/aimodel", {
         messages: nextMessages,
         isFinal: finalFlag,
-        
       });
-      console.log(result);
+
       // ✅ FINAL response: { trip_plan: {...} }
       if (finalFlag && result.data?.trip_plan) {
         const plan: TripInfo = result.data.trip_plan;
-        
+
         setTripPlan(plan);
         setTripDetailInfo(plan);
 
-        // Only save if we have a valid uid
         const uid = userDetail?._id;
         if (uid) {
           const _tripId = uuidv4();
@@ -174,7 +213,6 @@ function Chatbox() {
           console.warn("Skipping SaveTripDetail: userDetail._id is not ready yet.");
         }
 
-        // ✅ show final UI message
         setMessages((prev) => [
           ...prev,
           {
@@ -207,6 +245,9 @@ function Chatbox() {
       ]);
     } finally {
       setLoading(false);
+
+      // ✅ keep focus in textarea without causing page jump
+      inputRef.current?.focus({ preventScroll: true } as any);
     }
   };
 
@@ -214,7 +255,11 @@ function Chatbox() {
     if (loading) return;
     const text = userInput;
     setUserInput("");
+
     await sendMessage(text, isFinal);
+
+    // ✅ keep focus (mobile safe)
+    inputRef.current?.focus({ preventScroll: true } as any);
   };
 
   const RenderGenerativeUi = (ui: string) => {
@@ -240,11 +285,11 @@ function Chatbox() {
     }
   };
 
+  // ✅ Trigger final generation once
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg) return;
 
-    // ✅ when agent says Final, trigger final generation ONCE
     const shouldTriggerFinal =
       lastMsg.role === "assistant" &&
       lastMsg.ui === "Final" &&
@@ -256,12 +301,12 @@ function Chatbox() {
       finalRequestInFlightRef.current = true;
       setIsFinal(true);
 
-      // fire and release the lock when done
       sendMessage("Generate the final trip plan now.", true).finally(() => {
         finalRequestInFlightRef.current = false;
       });
     }
-  }, [messages]); // ✅ safe because we use refs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
@@ -270,7 +315,7 @@ function Chatbox() {
       className="
         flex flex-col border shadow bg-secondary rounded-2xl
         p-4 sm:p-6 lg:p-10
-        h-[calc(100vh-140px)] md:h-[85vh]
+        h-[calc(100dvh-140px)] md:h-[85vh]
         overflow-hidden
       "
     >
@@ -281,7 +326,12 @@ function Chatbox() {
       )}
 
       {/* Display Messages */}
-      <section className="flex-1 overflow-y-auto px-1 sm:px-2 py-3">
+      <section
+        ref={(el) => {
+          scrollContainerRef.current = el;
+        }}
+        className="flex-1 overflow-y-auto px-1 sm:px-2 py-3 overscroll-contain"
+      >
         {messages.map((msg: Message, index) =>
           msg.role === "user" ? (
             <div className="flex justify-end mt-2" key={index}>
@@ -314,10 +364,15 @@ function Chatbox() {
       <section className="pt-2">
         <div className="border rounded-2xl p-3 sm:p-4 shadow relative bg-background">
           <Textarea
+            ref={inputRef}
             className="w-full h-24 sm:h-28 bg-transparent border-none focus-visible:ring-0 shadow-none resize-none pr-12"
             placeholder="Start typing here!"
             onChange={(event) => setUserInput(event.target.value ?? "")}
             value={userInput}
+            onFocus={(e) => {
+              // ✅ avoids page jump on some mobile browsers
+              (e.target as HTMLTextAreaElement).scrollIntoView({ block: "nearest" });
+            }}
           />
 
           <Button
